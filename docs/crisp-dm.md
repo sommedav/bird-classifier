@@ -270,7 +270,7 @@ der beste Checkpoint (keine separate Datei für die letzte Epoche).
 
 ### Erste Modellversion (Baseline)
 
-Das erste Modell (referenziert in `project.md` als `notebook.ipynb`) hatte
+Eine erste Notebook-Version (vgl. `project.md`, Abschnitt 6) hatte
 ein kritisches Problem: Viele Clips enthielten Stille oder Rauschen und waren
 trotzdem als Vogel gelabelt. Das Modell lernte Rauschen statt Vogelgesang.
 Daraus entstand die Idee zur YAMNet-Bereinigung und der Background-Klasse.
@@ -355,7 +355,7 @@ YAMNet erzeugt wurden; auf dem heutigen YAMNet-Test-Set wirkt es unausgewogen
 Die Anwendung ist eine **Streamlit-App** (`app.py`), die lokal gestartet wird.
 
 ```bash
-streamlit run app.py
+uv run streamlit run app.py
 ```
 
 Kein Docker-Image, kein Cloud-Deployment vorhanden.
@@ -379,7 +379,7 @@ weitere `models/*.pth` (z. B. ein selbst trainierter Checkpoint) gewählt werden
 fester Pfad lässt sich erzwingen via:
 
 ```bash
-BIRD_MODEL_PATH=/pfad/zu/modell.pth streamlit run app.py
+BIRD_MODEL_PATH=/pfad/zu/modell.pth uv run streamlit run app.py
 ```
 
 ### Konsistenz Training ↔ Inferenz
@@ -411,5 +411,5 @@ stdout zurückgegeben. Implementiert in `app.py` als `_BIRDNET_SUBPROCESS_SCRIPT
 
 ## 8. Future Work
 
-Mögliche Erweiterungen wären ein Docker-Image für eine reproduzierbare Laufzeitumgebung und ein Cloud-Deployment, zum Beispiel über Streamlit Cloud oder Hugging Face Spaces. Für die aktuelle Kursabgabe wird die Anwendung lokal über `streamlit run app.py` ausgeführt.
+Mögliche Erweiterungen wären ein Docker-Image für eine reproduzierbare Laufzeitumgebung und ein Cloud-Deployment, zum Beispiel über Streamlit Cloud oder Hugging Face Spaces. Für die aktuelle Kursabgabe wird die Anwendung lokal über `uv run streamlit run app.py` ausgeführt.
 

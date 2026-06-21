@@ -30,6 +30,7 @@ bird-classifier/
 └── src/
     ├── bird_data.py
     ├── cut_audio.py
+    ├── yamnet_worker.py
     └── build_dataset.py
 ```
 
@@ -47,7 +48,7 @@ bird-classifier/
 
 | Pfad | Zweck |
 | --- | --- |
-| `app.py` | Streamlit-Web-App. Lädt standardmäßig `models/birdcnn_release_mit_yamnet.pth` (per Sidebar-Dropdown sind das zweite Release-Modell und jedes weitere `models/*.pth` wählbar), nimmt eine WAV-Datei entgegen (Upload oder Live-Aufnahme), zeigt Mel-Spektrogramm mit wählbarem 5-s-Ausschnitt, gibt CNN-Vorhersage und optionalen BirdNET-Vergleich aus. Einstiegspunkt: `streamlit run app.py`. |
+| `app.py` | Streamlit-Web-App. Lädt standardmäßig `models/birdcnn_release_mit_yamnet.pth` (per Sidebar-Dropdown sind das zweite Release-Modell und jedes weitere `models/*.pth` wählbar), nimmt eine WAV-Datei entgegen (Upload oder Live-Aufnahme), zeigt Mel-Spektrogramm mit wählbarem 5-s-Ausschnitt, gibt CNN-Vorhersage und optionalen BirdNET-Vergleich aus. Einstiegspunkt: `uv run streamlit run app.py`. |
 | `setup_check.py` | Einfacher Umgebungstest: gibt Python-Version und Versionsnummern der wichtigsten Bibliotheken aus. Kein Unittest-Framework, nur manueller Smoke-Test. |
 
 ### Modell-Artefakte (`models/`)
@@ -72,12 +73,14 @@ Die drei Skripte müssen in dieser Reihenfolge ausgeführt werden:
 
 | Pfad | Schritt | Zweck |
 | --- | --- | --- |
-| `src/bird_data.py` | 1 | Lädt MP3-Aufnahmen von der Xeno-Canto API herunter. Konfigurierbar: Art (`SEARCH_BIRD`), Zielordner (`TARGET_CLASS`), maximale Dateianzahl (`MAX_FILES`), Mindestlänge in Sekunden. Speichert Dateien nach `data/<Klasse>/files/`. |
+| `src/bird_data.py` | 1 | Lädt MP3-Aufnahmen von der Xeno-Canto API herunter — alle konfigurierten Arten parallel in einem Lauf. Konfigurierbar: Zielarten (`DOWNLOAD_SPECIES`), Background-Arten (`BACKGROUND_SPECIES`), maximale Dateianzahl pro Art (`MAX_FILES`), Mindestlänge in Sekunden (`MIN_SECONDS`); die Suchbegriffe je Art stehen im dict `BIRD_CONFIG`. Speichert Zielarten nach `data/<Art>/files/`, Background-Arten nach `data/Background/files/`. |
 | `src/cut_audio.py` | 2 | Schneidet lange MP3s in 5-Sekunden-WAV-Clips (32 kHz). YAMNet (isolierter Subprozess, `src/yamnet_worker.py`) bewertet pro Zielart-Clip die Vogel-Präsenz: Score ≥ 0,20 → `data/<Art>/clips/`, sonst (Stille/Rauschen) → `data/Background/clips/`. Background-Arten (Krähe/Taube/Spatz) gehen komplett ohne YAMNet in den Background. |
+| `src/yamnet_worker.py` | (Helfer zu 2) | Wird **nicht** direkt aufgerufen, sondern von `cut_audio.py` als isolierter Subprozess gestartet. Lädt YAMNet (TensorFlow Hub) und gibt pro 16-kHz-Clip einen Vogel-Score [0, 1] als JSON zurück. Eigener Prozess, weil sich TensorFlow und PyTorch im selben Prozess nicht zuverlässig vertragen. |
 | `src/build_dataset.py` | 3 | Sammelt alle WAV-Clips, vergibt numerische Labels und erzeugt Train/Val/Test-Splits (70 / 15 / 15, Seed=42). Split erfolgt nach `recording_id`, nicht nach einzelnen Clips — verhindert Data Leakage. Ausgabe: `data_splits/train.csv`, `val.csv`, `test.csv`. |
 
-Jedes Skript enthält einen konfigurierbaren Block am Anfang (`# --- ANPASSEN ---`),
-in dem Art, Pfade und Schwellwerte angepasst werden.
+Die drei Pipeline-Skripte (`bird_data.py`, `cut_audio.py`, `build_dataset.py`) enthalten je
+einen konfigurierbaren Block am Anfang (`# --- ANPASSEN ---`), in dem Arten, Pfade und
+Schwellwerte angepasst werden. `yamnet_worker.py` wird nur intern von `cut_audio.py` genutzt.
 
 ### Training — `notebooks/`
 

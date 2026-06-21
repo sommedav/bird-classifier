@@ -62,19 +62,22 @@ Einstellungen: 32 kHz Sampling-Rate, 128 Mel-Bänder, `fmax` = 16 kHz, feste Bre
 Die Labels für die drei Vogelarten ergeben sich direkt aus dem Download – was wir als
 Amsel suchen, bekommt das Label Amsel usw. (numerisch: Amsel = 0, Kohlmeise = 1,
 Rotkehlchen = 2, Background = 3). Für "Background" haben wir nicht von Hand gelabelt,
-sondern das vortrainierte Google-Modell **YAMNet** als Qualitätskontrolle eingesetzt
-(`cut_audio.py`, in einem isolierten Subprozess). YAMNet erkennt pro Clip, ob ein Vogel
-hörbar ist (Maximum über die Zeitfenster, ab Score 0.20). Die Background-Klasse speist
-sich daraus aus zwei Quellen: Zielart-Segmente **ohne** erkannten Vogel (Stille,
-Rauschen) und die bewusst geladenen Fremdvögel (Taube, Krähe, Spatz), die als
-"Hard Negatives" komplett in den Background gehen. Wichtig: YAMNet bestimmt nicht die
-Vogelart, sondern nur, ob überhaupt ein Vogel da ist.
+sondern eine automatische Qualitätskontrolle in `cut_audio.py` eingesetzt. Ursprünglich
+übernahm das vortrainierte Google-Modell **YAMNet** diese Aufgabe; aus Stabilitäts- und
+Sample-Rate-Gründen (siehe Abschnitt 9) haben wir es später durch eine leichte
+**librosa-Heuristik** ersetzt. Diese berechnet pro Clip einen Vogel-Score in [0, 1] aus
+zwei Merkmalen: dem Energieanteil im Vogelfrequenzbereich (> 1 kHz) und der Tonalität
+(niedrige spektrale Flachheit = tonales, vogelähnliches Signal). Daraus entstehen zwei
+Arten von Background: "Hard Negatives" (klar hörbarer, aber fremder Vogel wie Taube oder
+Krähe, Score ≥ 0.40) und normaler Hintergrund (schwache oder diffuse Geräusche,
+Score ≥ 0.15). Wichtig: der Score bestimmt nicht die Vogelart, sondern dient nur dem
+Aufräumen der Daten.
 
 ### Risks
 
 Die größten Risiken waren: verrauschte Clips, die trotzdem als Vogel gelabelt sind
-(genau das ist uns am Anfang passiert), Label-Rauschen durch die selbst gesetzte
-YAMNet-Schwelle, ein anfängliches Ungleichgewicht zugunsten des Hintergrunds, und die
+(genau das ist uns am Anfang passiert), Label-Rauschen durch die selbst gesetzten
+Score-Schwellen, ein anfängliches Ungleichgewicht zugunsten des Hintergrunds, und die
 begrenzte Generalisierung – nur drei Arten, Daten überwiegend aus relativ sauberen
 Einzelaufnahmen. Außerdem das Risiko von Data Leakage, wenn Clips derselben
 Originalaufnahme in Train und Test landen (siehe Abschnitt 5).
@@ -84,8 +87,9 @@ Originalaufnahme in Train und Test landen (siehe Abschnitt 5).
 Statt eigener Forschung haben wir bestehende Werkzeuge kombiniert. Die wichtigsten:
 
 - **Xeno-Canto** (Plattform/API) – Quelle aller Aufnahmen.
-- **YAMNet** von Google (vortrainiertes Modell) – Qualitätskontrolle und Erzeugung der
-  Background-Clips.
+- **YAMNet** von Google (vortrainiertes Modell) – ursprünglich für Qualitätskontrolle
+  und Erzeugung der Background-Clips; inzwischen durch eine librosa-Heuristik ersetzt.
+  Als isolierter Subprozess-Scorer weiterhin in `src/yamnet_worker.py` verfügbar.
 - **BirdNET** über `birdnetlib` (Referenzsystem) – Vergleichsmaßstab in der App.
 - **librosa** – Laden der Audiodaten und Berechnung der Mel-Spektrogramme.
 - **PyTorch** – Aufbau und Training des eigenen CNN.
@@ -97,8 +101,9 @@ Statt eigener Forschung haben wir bestehende Werkzeuge kombiniert. Die wichtigst
 **Schneiden in Clips:** Die langen MP3s sind als Ganzes nicht zum Trainieren geeignet.
 Mit `cut_audio.py` schneiden wir sie in 5-Sekunden-Clips und speichern sie als WAV.
 Kurze Segmente sind ein gängiger Standard für Audio-Klassifikation und reduzieren
-unnötigen Hintergrund. Im selben Schritt entscheidet YAMNet pro Zielart-Clip, ob ein
-Vogel hörbar ist: Segmente ohne Vogel (Stille/Rauschen) wandern in die Background-Klasse.
+unnötigen Hintergrund. Im selben Schritt sortiert eine librosa-Heuristik (Vogel-Score
+aus hochfrequenter Energie und Tonalität) jeden Clip in Background bzw. Hard Negatives
+ein – diese Aufgabe übernahm zunächst YAMNet (siehe Abschnitt 9).
 
 **Feature-Berechnung:** Jeder Clip wird in ein Mel-Spektrogramm umgewandelt (32 kHz,
 128 Mel-Bänder, `fmax` = 16 kHz). Die Breite wird fest auf 313 Frames gebracht (zu
@@ -219,7 +224,7 @@ erst die YAMNet-Bereinigung hat dieses Verhalten korrigiert.
 Die Anwendung ist eine Streamlit-App (`app.py`) und wird lokal gestartet mit:
 
 ```bash
-streamlit run app.py
+uv run streamlit run app.py
 ```
 
 In der App kann man eine WAV-Datei hochladen oder live aufnehmen, sieht das
@@ -227,19 +232,28 @@ Mel-Spektrogramm, wählt einen 5-Sekunden-Ausschnitt und bekommt die Vorhersage 
 eigenen CNN (Default `models/birdcnn_release_mit_yamnet.pth`) – die Klasse "Background" wird dabei als "Kein Vogel"
 angezeigt. Zusätzlich wird dieselbe Aufnahme von BirdNET analysiert und das Ergebnis
 gegenübergestellt. BirdNET läuft bewusst in einem eigenen Subprozess, weil sich PyTorch
-und TensorFlow-Lite sonst in die Quere kommen.
+und TensorFlow-Lite sonst in die Quere kommen. Wird eine der drei Zielarten erkannt,
+zeigt die App zusätzlich ein "Wissenswertes"-Panel mit Steckbrief (wiss. Name,
+Lebenserwartung, Gewicht, Spannweite, Lebensraum, Ernährung, Brutzeit), Fun Facts und
+einer Plotly-Verbreitungskarte.
 
 Damit Training und App zusammenpassen, ist die Vorverarbeitung in der App identisch zum
 Training (32 kHz, 128 Mel-Bänder, 313 Frames, gleiche Normalisierung). Die benötigten
-Bibliotheken sind in `pyproject.toml` definiert und über `uv sync` reproduzierbar
-installierbar.
+Bibliotheken sind in `pyproject.toml` definiert und werden reproduzierbar via
+`uv sync` installiert (fixiert in `uv.lock`).
 
 ## 9. Reflection
 
 Die wichtigste Lektion war, dass saubere Daten mehr bringen als ein komplexeres Netz:
 Der eigentliche Fortschritt kam nicht durch ein größeres Modell, sondern durch das
-Aufräumen der Daten mit YAMNet und die Einführung der Background-Klasse – die erste
-Version hatte vor allem Rauschen "gelernt". Auch die bewussten Hard Negatives (Taube,
+Aufräumen der Daten und die Einführung der Background-Klasse – die erste Version hatte
+vor allem Rauschen "gelernt". Diese Bereinigung haben wir zunächst mit YAMNet umgesetzt,
+es aber später durch eine leichtgewichtige librosa-Heuristik ersetzt: YAMNet
+(TensorFlow) ließ sich auf unserer Plattform nur stabil in einem Subprozess betreiben
+und erwartet 16 kHz, während unsere Clips inzwischen mit 32 kHz (passend zum Training)
+erzeugt werden. Die Heuristik kommt ohne TensorFlow aus und läuft direkt im Schnitt-
+Skript – um den Preis einer etwas gröberen Filterung (ein erneuter Einsatz von YAMNet
+wäre ein möglicher Qualitäts-Hebel). Auch die bewussten Hard Negatives (Taube,
 Krähe, Spatz) haben geholfen, Zielvögel von anderen Vögeln zu trennen, und das
 file-based Splitting nach Aufnahme-ID war nötig, um zu optimistische Ergebnisse durch
 Data Leakage zu vermeiden.
@@ -250,3 +264,25 @@ wahrscheinlich am meisten bringen. Technisch hat uns BirdNET zusammen mit PyTorc
 zunächst Konflikte beschert, die wir über einen Subprozess gelöst haben. Und auch wenn
 wir den ML-Teil stark mit KI erarbeitet haben, haben wir gerade an den Daten- und
 Problemstellen viel darüber gelernt, worauf es bei so einem Projekt wirklich ankommt.
+
+Im Verlauf des Projekts wurde zunächst ein erstes Repository angelegt, das im Laufe der
+Entwicklung zunehmend unübersichtlich wurde. Aus diesem Grund wurde das Projekt in einem
+neuen, sauber strukturierten Repository neu aufgesetzt. Das alte Repository ist hier
+einsehbar: [LINK]
+
+## 10. Zukunftsperspektive
+
+Ein erster wichtiger Schritt wäre die Erweiterung der Artenzahl. Aktuell erkennt das
+Modell lediglich drei Zielarten — Amsel, Kohlmeise und Rotkehlchen. Da die
+zugrundeliegende Datenpipeline auf der Xeno-Canto-API aufbaut, lassen sich weitere
+heimische Arten wie Buchfink, Zilpzalp oder Star vergleichsweise einfach integrieren.
+Dies würde den praktischen Nutzen des Systems erheblich steigern und es für Anwendungen
+im Naturschutz oder in der Citizen Science attraktiver machen.
+
+Darüber hinaus sollte die Robustheit gegenüber Feldaufnahmen verbessert werden. Das
+Modell wurde vorwiegend auf qualitativ hochwertigen Aufnahmen aus Xeno-Canto trainiert,
+was unter realen Bedingungen — etwa bei Windgeräuschen, Verkehrslärm oder der
+gleichzeitigen Präsenz mehrerer Arten — zu Einbußen in der Erkennungsleistung führen
+kann. Durch die gezielte Anreicherung des Trainingsdatensatzes mit authentischen
+Feldaufnahmen sowie durch erweiterte Augmentierungsstrategien könnte die
+Alltagstauglichkeit des Systems deutlich erhöht werden.

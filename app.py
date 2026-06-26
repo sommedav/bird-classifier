@@ -400,7 +400,7 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    #MainMenu, footer, header {visibility: hidden;}
+    #MainMenu, footer {visibility: hidden;}
     /* Modell-Sidebar dauerhaft ausgeklappt: Collapse-/Expand-Buttons entfernen und
        die Sidebar sichtbar erzwingen, damit sie nie eingeklappt hängen bleibt. */
     [data-testid="stSidebarCollapseButton"],

@@ -33,3 +33,5 @@ notebooks/*.pth
 # Editor
 .idea/
 .vscode/
+
+*.mp4
